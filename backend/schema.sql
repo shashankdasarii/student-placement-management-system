@@ -14,14 +14,6 @@
 /*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
 /*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
-SET @MYSQLDUMP_TEMP_LOG_BIN = @@SESSION.SQL_LOG_BIN;
-SET @@SESSION.SQL_LOG_BIN= 0;
-
---
--- GTID state at the beginning of the backup 
---
-
-SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'e7b54f6e-96f2-11f1-acf4-08a521b52ab0:1-57';
 
 --
 -- Table structure for table `applications`
@@ -173,7 +165,6 @@ LOCK TABLES `users` WRITE;
 INSERT INTO `users` VALUES (1,'john_student','$2a$10$wE13...samplehashstudent','student','2026-08-13 09:13:13'),(2,'techcorp_hr','$2a$10$wE13...samplehashrecruiter','recruiter','2026-08-13 09:13:13'),(3,'admin_user','$2a$10$wE13...samplehashadmin','admin','2026-08-13 09:13:13'),(4,'alex_student','$2b$10$zoAlbeP5fNZLA/yqz1ScB.Q0/RSyZ/4zgGbt/6HW37zzRx.MX9cq6','student','2026-08-13 09:20:18'),(5,'google_recruiter','$2b$10$olT9riKx80PPSxW9m.JjTOJV8cuBy/JlJAhDs0wlO4Uy6VFdnpyj6','recruiter','2026-08-13 09:21:01'),(6,'Sasi','$2b$10$PDpur4TAmzTR8gBvJgmAAOKrv/MlMNkhW7/NT9o9kIDENvvBU5f.G','student','2026-08-13 09:41:44'),(7,'Shashank ','$2b$10$PHy3WWdBJX.O0BATP24r8.QVca45QezhhyzovNKyp/d0pblDTtKt2','student','2026-08-18 06:16:03'),(8,'Shashank123','$2b$10$4sWdzBCsguwKN5HeydUa5eUI9.67KhfQXRJA7/We55BNI1O1FezVO','student','2026-08-18 06:21:17'),(9,'Shashank','$2b$10$0J0qamQWuCaMlcfn4MHrQ.k22ecOI/qNFbwpDW79ybTC0lbt3MEpW','recruiter','2026-08-18 06:31:40');
 /*!40000 ALTER TABLE `users` ENABLE KEYS */;
 UNLOCK TABLES;
-SET @@SESSION.SQL_LOG_BIN = @MYSQLDUMP_TEMP_LOG_BIN;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
@@ -184,4 +175,4 @@ SET @@SESSION.SQL_LOG_BIN = @MYSQLDUMP_TEMP_LOG_BIN;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-08-18 14:31:46
+-- Dump completed on 2026-08-18 14:52:48

@@ -1,311 +1,261 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import '../App.css';
 
-function RecruiterDashboard() {
-  const { user, logout } = useAuth();
-  const profile = user?.profile;
-
+const RecruiterDashboard = () => {
   const [jobs, setJobs] = useState([]);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [minCgpa, setMinCgpa] = useState('7.50');
-  const [deadline, setDeadline] = useState('');
-
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
-
-  // Applicant Drawer State
-  const [selectedJobId, setSelectedJobId] = useState(null);
+  const [selectedJob, setSelectedJob] = useState(null);
   const [applicants, setApplicants] = useState([]);
-  const [loadingApplicants, setLoadingApplicants] = useState(false);
-  const [statusMessage, setStatusMessage] = useState(null);
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    min_cgpa: '7.50',
+    deadline: ''
+  });
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
-  const fetchMyJobs = async () => {
-    setLoading(true);
-    setError(null);
+  const token = localStorage.getItem('token');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  const fetchJobs = async () => {
+    if (!token) {
+      navigate('/login');
+      return;
+    }
     try {
-      const res = await axios.get('http://localhost:5000/api/jobs/my-jobs');
-      if (res.data.status === 'success') {
-        setJobs(res.data.jobs);
-      }
+      const res = await axios.get('http://127.0.0.1:5001/api/jobs/recruiter', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setJobs(res.data?.data || []);
     } catch (err) {
-      console.error('Fetch Recruiter Jobs Error:', err);
-      setError(err.response?.data?.message || 'Failed to load your posted jobs.');
+      console.error('Error fetching recruiter jobs:', err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchMyJobs();
+    fetchJobs();
   }, []);
 
-  const fetchApplicants = async (jobId) => {
-    if (selectedJobId === jobId) {
-      setSelectedJobId(null);
-      return;
-    }
-
-    setSelectedJobId(jobId);
-    setLoadingApplicants(true);
-    setStatusMessage(null);
+  const handlePostJob = async (e) => {
+    e.preventDefault();
     try {
-      const res = await axios.get(`http://localhost:5000/api/applications/job/${jobId}`);
-      if (res.data.status === 'success') {
-        setApplicants(res.data.applications);
-      }
+      await axios.post('http://127.0.0.1:5001/api/jobs', {
+        ...formData,
+        min_cgpa: parseFloat(formData.min_cgpa)
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      alert('Job posted successfully!');
+      setFormData({ title: '', description: '', min_cgpa: '7.50', deadline: '' });
+      fetchJobs();
     } catch (err) {
-      console.error('Fetch Applicants Error:', err);
-      setStatusMessage('❌ Failed to load applicants for this job.');
-    } finally {
-      setLoadingApplicants(false);
+      alert(err.response?.data?.message || 'Error posting job');
+    }
+  };
+
+  const handleViewApplicants = async (job) => {
+    setSelectedJob(job);
+    try {
+      const res = await axios.get(`http://127.0.0.1:5001/api/applications/job/${job.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setApplicants(res.data?.data || []);
+    } catch (err) {
+      console.error('Error fetching applicants:', err);
     }
   };
 
   const handleUpdateStatus = async (applicationId, newStatus) => {
-    setStatusMessage(null);
     try {
-      const res = await axios.put(`http://localhost:5000/api/applications/${applicationId}/status`, {
-        status: newStatus
-      });
-
-      if (res.data.status === 'success') {
-        setStatusMessage(`✅ Candidate status updated to "${newStatus}"!`);
-        // Refresh local applicants list
-        setApplicants((prev) =>
-          prev.map((app) =>
-            app.application_id === applicationId ? { ...app, status: newStatus } : app
-          )
-        );
+      await axios.put(
+        `http://127.0.0.1:5001/api/applications/${applicationId}/status`,
+        { status: newStatus },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (selectedJob) {
+        handleViewApplicants(selectedJob);
       }
     } catch (err) {
-      console.error('Update Status Error:', err);
-      setStatusMessage(`❌ ${err.response?.data?.message || 'Failed to update candidate status.'}`);
+      alert(err.response?.data?.message || 'Error updating status');
     }
   };
 
-  const handlePostJob = async (e) => {
-    e.preventDefault();
-    setError(null);
-    setSuccess(null);
-    setSubmitting(true);
-
-    try {
-      const res = await axios.post('http://localhost:5000/api/jobs', {
-        title,
-        description,
-        min_cgpa: parseFloat(minCgpa),
-        deadline
-      });
-
-      if (res.data.status === 'success') {
-        setSuccess('🎉 Job opening posted successfully!');
-        setTitle('');
-        setDescription('');
-        setMinCgpa('7.50');
-        setDeadline('');
-        fetchMyJobs();
-      }
-    } catch (err) {
-      console.error('Post Job Error:', err);
-      setError(err.response?.data?.message || 'Failed to post new job.');
-    } finally {
-      setSubmitting(false);
-    }
+  const handleSignOut = () => {
+    localStorage.clear();
+    navigate('/login');
   };
+
+  if (loading) return <div style={{ textAlign: 'center', marginTop: '50px' }}>Loading Dashboard...</div>;
 
   return (
-    <div className="app-container">
-      {/* Top Navbar */}
-      <header className="navbar">
+    <div style={{ maxWidth: '960px', margin: '30px auto', padding: '0 16px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h2 className="navbar-brand">Recruiter Dashboard</h2>
-          <p className="navbar-sub">Posting for: {profile?.company_name || 'Your Company'}</p>
+          <h2>Recruiter Dashboard</h2>
+          <p style={{ color: 'var(--ios-text-secondary)' }}>Posting for: {user?.company_name || 'Organization'}</p>
         </div>
-        <div className="navbar-right">
-          <span className="role-badge role-recruiter">RECRUITER</span>
-          <button onClick={logout} className="btn-logout">
-            Sign Out
-          </button>
-        </div>
-      </header>
-
-      <div className="dashboard-grid">
-        {/* Post New Job Card */}
-        <div className="card">
-          <h3 className="card-title">Post New Job Opening</h3>
-          <p className="card-sub">Create job requirements for campus placement drive</p>
-
-          {error && <div className="alert alert-error">{error}</div>}
-          {success && <div className="alert alert-success">{success}</div>}
-
-          <form onSubmit={handlePostJob} className="auth-form" style={{ marginTop: '16px' }}>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Job Title</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Full Stack Developer"
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Minimum Required CGPA</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="10"
-                  className="form-input"
-                  value={minCgpa}
-                  onChange={(e) => setMinCgpa(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Job Description</label>
-              <textarea
-                className="form-input"
-                rows="3"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe role responsibilities, tech stack, and location..."
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Application Deadline</label>
-              <input
-                type="datetime-local"
-                className="form-input"
-                value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
-                required
-              />
-            </div>
-
-            <button type="submit" className="btn-primary" disabled={submitting}>
-              {submitting ? 'Publishing Job...' : 'Publish Job Opening'}
-            </button>
-          </form>
-        </div>
-
-        {/* Posted Jobs List */}
-        <div className="card">
-          <h3 className="card-title">Your Active Job Postings ({jobs.length})</h3>
-
-          {loading ? (
-            <p style={{ color: '#94a3b8', marginTop: '16px' }}>Loading job postings...</p>
-          ) : jobs.length === 0 ? (
-            <p style={{ color: '#94a3b8', marginTop: '16px' }}>
-              No active job postings yet. Use the form above to publish your first job opening!
-            </p>
-          ) : (
-            <div className="recruiter-jobs-list" style={{ marginTop: '16px' }}>
-              {jobs.map((job) => (
-                <div key={job.id} className="recruiter-job-card">
-                  <div className="r-job-header">
-                    <div>
-                      <h4 className="job-title">{job.title}</h4>
-                      <span className="deadline-text">
-                        Min CGPA: <strong>{job.min_cgpa}</strong> • Deadline: {new Date(job.deadline).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <button
-                      className="btn-view-applicants"
-                      onClick={() => fetchApplicants(job.id)}
-                    >
-                      👥 View Applicants ({job.applicant_count})
-                    </button>
-                  </div>
-
-                  <p className="job-desc" style={{ marginTop: '8px' }}>
-                    {job.description}
-                  </p>
-
-                  {/* Applicants Drawer */}
-                  {selectedJobId === job.id && (
-                    <div className="applicants-drawer">
-                      <h4 style={{ marginBottom: '12px', fontSize: '15px' }}>
-                        Applicants for "{job.title}"
-                      </h4>
-
-                      {statusMessage && (
-                        <div className="alert alert-success" style={{ padding: '8px 12px', fontSize: '13px' }}>
-                          {statusMessage}
-                        </div>
-                      )}
-
-                      {loadingApplicants ? (
-                        <p style={{ color: '#94a3b8', fontSize: '13px' }}>Loading applicants...</p>
-                      ) : applicants.length === 0 ? (
-                        <p style={{ color: '#94a3b8', fontSize: '13px' }}>
-                          No candidates have applied for this position yet.
-                        </p>
-                      ) : (
-                        <div className="applicant-list">
-                          {applicants.map((cand) => (
-                            <div key={cand.application_id} className="applicant-item">
-                              <div className="cand-info">
-                                <strong>{cand.student_name}</strong> ({cand.student_email})
-                                <div className="cand-meta">
-                                  Branch: {cand.student_branch} • CGPA: <span className="highlight-cgpa">{cand.student_cgpa}</span>
-                                </div>
-                                {cand.resume_url ? (
-                                  <a
-                                    href={cand.resume_url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="auth-link"
-                                    style={{ fontSize: '12px', display: 'inline-block', marginTop: '4px' }}
-                                  >
-                                    📄 View Candidate Resume (PDF)
-                                  </a>
-                                ) : (
-                                  <span style={{ fontSize: '12px', color: '#64748b' }}>No resume uploaded</span>
-                                )}
-                              </div>
-
-                              <div className="cand-actions">
-                                <span className={`status-badge status-${cand.status.toLowerCase()}`} style={{ fontSize: '11px', padding: '4px 8px' }}>
-                                  {cand.status}
-                                </span>
-
-                                <select
-                                  className="status-select"
-                                  value={cand.status}
-                                  onChange={(e) => handleUpdateStatus(cand.application_id, e.target.value)}
-                                >
-                                  <option value="Applied">Applied</option>
-                                  <option value="Shortlisted">Shortlisted</option>
-                                  <option value="Accepted">Accepted</option>
-                                  <option value="Rejected">Rejected</option>
-                                </select>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <span className="badge badge-accent">RECRUITER</span>
+          <button className="secondary" onClick={handleSignOut}>Sign Out</button>
         </div>
       </div>
+
+      {/* Post New Job Card */}
+      <div className="card" style={{ marginBottom: '32px' }}>
+        <h3 style={{ marginBottom: '8px' }}>Post New Job Opening</h3>
+        <p style={{ color: 'var(--ios-text-secondary)', fontSize: '14px', marginBottom: '20px' }}>
+          Create job requirements for campus placement drive
+        </p>
+
+        <form onSubmit={handlePostJob}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '16px' }}>
+            <div>
+              <label>Job Title</label>
+              <input
+                type="text"
+                required
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                placeholder="e.g. Full Stack Developer"
+              />
+            </div>
+            <div>
+              <label>Minimum Required CGPA</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="10"
+                required
+                value={formData.min_cgpa}
+                onChange={(e) => setFormData({ ...formData, min_cgpa: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label>Job Description</label>
+            <textarea
+              rows="3"
+              required
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Describe role responsibilities, tech stack, and location..."
+            />
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label>Application Deadline</label>
+            <input
+              type="date"
+              required
+              value={formData.deadline}
+              onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
+            />
+          </div>
+
+          <button type="submit" style={{ width: '100%' }}>Publish Job Opening</button>
+        </form>
+      </div>
+
+      {/* Active Postings */}
+      <h3 style={{ marginBottom: '16px' }}>Your Active Job Postings ({jobs.length})</h3>
+      {jobs.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', color: 'var(--ios-text-secondary)' }}>
+          No active job postings yet. Use the form above to publish your first job opening!
+        </div>
+      ) : (
+        jobs.map((job) => (
+          <div key={job.id} className="card" style={{ marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <h3 style={{ margin: '0 0 6px 0' }}>{job.title}</h3>
+                <p style={{ color: 'var(--ios-text-secondary)', fontSize: '14px', marginBottom: '8px' }}>
+                  {job.description}
+                </p>
+                <span style={{ fontSize: '13px', color: 'var(--ios-text-secondary)' }}>
+                  Min CGPA: <strong>{job.min_cgpa}</strong> | Deadline: {new Date(job.deadline).toLocaleDateString()}
+                </span>
+              </div>
+              <button className="secondary" onClick={() => handleViewApplicants(job)}>
+                👥 View Applicants
+              </button>
+            </div>
+          </div>
+        ))
+      )}
+
+      {/* Applicants View Modal */}
+      {selectedJob && (
+        <div className="card" style={{ marginTop: '32px', borderColor: 'var(--ios-system-blue)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3>Applicants for: {selectedJob.title}</h3>
+            <button className="secondary" onClick={() => setSelectedJob(null)}>Close</button>
+          </div>
+
+          {applicants.length === 0 ? (
+            <p style={{ color: 'var(--ios-text-secondary)' }}>No candidates have applied to this posting yet.</p>
+          ) : (
+            applicants.map((app) => (
+              <div
+                key={app.application_id}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '14px 0',
+                  borderBottom: '1px solid rgba(255,255,255,0.08)'
+                }}
+              >
+                <div>
+                  <strong>{app.name}</strong> ({app.branch}) — CGPA: <span style={{ color: 'var(--ios-system-green)', fontWeight: 700 }}>{app.cgpa}</span>
+                  <div style={{ fontSize: '13px', color: 'var(--ios-text-secondary)', marginTop: '4px' }}>
+                    Status: <strong>{app.status}</strong>
+                    {app.resume_url && (
+                      <a
+                        href={app.resume_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ marginLeft: '12px', color: 'var(--ios-system-blue)', textDecoration: 'none', fontWeight: 600 }}
+                      >
+                        📄 View Resume (PDF)
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => handleUpdateStatus(app.application_id, 'Shortlisted')}
+                    style={{ background: 'var(--ios-system-orange)', fontSize: '12px', padding: '6px 12px' }}
+                  >
+                    Shortlist
+                  </button>
+                  <button
+                    onClick={() => handleUpdateStatus(app.application_id, 'Accepted')}
+                    style={{ background: 'var(--ios-system-green)', fontSize: '12px', padding: '6px 12px' }}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    onClick={() => handleUpdateStatus(app.application_id, 'Rejected')}
+                    style={{ background: 'var(--ios-system-red)', fontSize: '12px', padding: '6px 12px' }}
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
-}
+};
 
 export default RecruiterDashboard;

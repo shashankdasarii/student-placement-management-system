@@ -1,86 +1,104 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
+import { useNavigate, Link } from 'react-router-dom';
+import '../App.css';
 
-function Login() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState(null);
+const Login = () => {
+  const [formData, setFormData] = useState({ username: '', password: '' });
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const { login } = useAuth();
   const navigate = useNavigate();
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
+    setError('');
     setLoading(true);
 
     try {
-      const res = await axios.post('http://localhost:5000/api/auth/login', {
-        username,
-        password
-      });
+      const res = await axios.post('http://127.0.0.1:5001/api/auth/login', formData);
+      const { token, user } = res.data;
 
-      if (res.data.status === 'success') {
-        login(res.data.token, res.data.user);
-        navigate('/dashboard');
+      // Clear any prior session and store fresh authentication
+      localStorage.clear();
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
+
+      // Direct redirection strictly based on role
+      if (user.role === 'student') {
+        navigate('/student-dashboard', { replace: true });
+      } else if (user.role === 'recruiter') {
+        navigate('/recruiter-dashboard', { replace: true });
+      } else {
+        navigate('/login');
       }
     } catch (err) {
       console.error('Login error:', err);
-      setError(
-        err.response?.data?.message || 'Failed to login. Please check credentials.'
-      );
+      setError(err.response?.data?.message || 'Invalid username or password.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="app-container">
-      <div className="auth-card">
-        <h2 className="auth-title">Welcome Back</h2>
-        <p className="auth-subtitle">Log in to Student Placement Management System</p>
+    <div className="card" style={{ maxWidth: '440px', margin: '80px auto' }}>
+      <h2 style={{ textAlign: 'center', marginBottom: '8px' }}>Welcome Back</h2>
+      <p style={{ textAlign: 'center', color: 'var(--ios-text-secondary)', marginBottom: '24px' }}>
+        Log in to Student Placement Management System
+      </p>
 
-        {error && <div className="alert alert-error">{error}</div>}
+      {error && (
+        <div style={{
+          background: 'rgba(255, 59, 48, 0.15)',
+          color: '#ff6b60',
+          border: '1px solid rgba(255, 59, 48, 0.3)',
+          padding: '12px 16px',
+          borderRadius: '12px',
+          marginBottom: '20px',
+          fontSize: '14px'
+        }}>
+          {error}
+        </div>
+      )}
 
-        <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-group">
-            <label className="form-label">Username</label>
-            <input
-              type="text"
-              className="form-input"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="e.g. john_student"
-              required
-            />
-          </div>
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: '16px' }}>
+          <label>Username</label>
+          <input
+            type="text"
+            name="username"
+            required
+            value={formData.username}
+            onChange={handleChange}
+            placeholder="Username"
+          />
+        </div>
 
-          <div className="form-group">
-            <label className="form-label">Password</label>
-            <input
-              type="password"
-              className="form-input"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
-          </div>
+        <div style={{ marginBottom: '24px' }}>
+          <label>Password</label>
+          <input
+            type="password"
+            name="password"
+            required
+            value={formData.password}
+            onChange={handleChange}
+            placeholder="••••••••"
+          />
+        </div>
 
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? 'Authenticating...' : 'Sign In'}
-          </button>
-        </form>
+        <button type="submit" disabled={loading} style={{ width: '100%' }}>
+          {loading ? 'Signing In...' : 'Sign In'}
+        </button>
+      </form>
 
-        <p className="auth-footer">
-          Don't have an account? <Link to="/register" className="auth-link">Register here</Link>
-        </p>
-      </div>
+      <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '14px', color: 'var(--ios-text-secondary)' }}>
+        Don't have an account? <Link to="/register" style={{ color: 'var(--ios-system-blue)', textDecoration: 'none', fontWeight: 600 }}>Register here</Link>
+      </p>
     </div>
   );
-}
+};
 
 export default Login;

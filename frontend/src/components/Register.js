@@ -1,209 +1,218 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
+import { useNavigate, Link } from 'react-router-dom';
 
-function Register() {
+const Register = () => {
   const [role, setRole] = useState('student');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-
-  // Student specific state
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [branch, setBranch] = useState('Computer Science');
-  const [cgpa, setCgpa] = useState('8.00');
-  const [resumeUrl, setResumeUrl] = useState('');
-
-  // Recruiter specific state
-  const [companyName, setCompanyName] = useState('');
-
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
+  const [formData, setFormData] = useState({
+    username: '',
+    password: '',
+    name: '',
+    email: '',
+    branch: 'Computer Science',
+    cgpa: '',
+    resume_url: '',
+    company_name: ''
+  });
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-
   const navigate = useNavigate();
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
+    setError('');
+    setSuccess('');
     setLoading(true);
 
-    const payload = {
-      username,
-      password,
-      role,
-      ...(role === 'student'
-        ? { name, email, branch, cgpa: parseFloat(cgpa) || 0, resume_url: resumeUrl }
-        : { company_name: companyName })
-    };
-
     try {
-      const res = await axios.post('http://localhost:5000/api/auth/register', payload);
-      if (res.data.status === 'success') {
-        setSuccess('Registration successful! Redirecting to login...');
-        setTimeout(() => {
-          navigate('/login');
-        }, 1500);
-      }
+      const payload = {
+        username: formData.username,
+        password: formData.password,
+        role: role,
+        name: formData.name,
+        email: formData.email,
+        branch: formData.branch,
+        cgpa: formData.cgpa ? parseFloat(formData.cgpa) : null,
+        resume_url: formData.resume_url,
+        company_name: formData.company_name
+      };
+
+      await axios.post('http://127.0.0.1:5001/api/auth/register', payload);
+      
+      setSuccess('Account created successfully! Redirecting to login...');
+      setTimeout(() => {
+        navigate('/login');
+      }, 1500);
     } catch (err) {
-      console.error('Registration error:', err);
-      setError(
-        err.response?.data?.message || 'Failed to register. Please check your inputs.'
-      );
+      console.error('Registration failed:', err);
+      setError(err.response?.data?.message || 'Failed to connect to backend server.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="app-container">
-      <div className="auth-card">
-        <h2 className="auth-title">Create Account</h2>
-        <p className="auth-subtitle">Join the Student Placement Portal</p>
+    <div className="card" style={{ maxWidth: '520px', margin: '40px auto' }}>
+      <h2 style={{ textAlign: 'center', marginBottom: '8px' }}>Create Account</h2>
+      <p style={{ textAlign: 'center', color: 'var(--ios-text-secondary)', marginBottom: '24px' }}>
+        Join the Student Placement Portal
+      </p>
 
-        {/* Role Selector Tabs */}
-        <div className="role-tabs">
-          <button
-            type="button"
-            className={`role-tab ${role === 'student' ? 'active' : ''}`}
-            onClick={() => setRole('student')}
-          >
-            🎓 Student
-          </button>
-          <button
-            type="button"
-            className={`role-tab ${role === 'recruiter' ? 'active' : ''}`}
-            onClick={() => setRole('recruiter')}
-          >
-            💼 Recruiter
-          </button>
+      {/* Role Switcher */}
+      <div className="segmented-control">
+        <button
+          type="button"
+          className={`tab-btn ${role === 'student' ? 'active' : ''}`}
+          onClick={() => setRole('student')}
+        >
+          🎓 Student
+        </button>
+        <button
+          type="button"
+          className={`tab-btn ${role === 'recruiter' ? 'active' : ''}`}
+          onClick={() => setRole('recruiter')}
+        >
+          💼 Recruiter
+        </button>
+      </div>
+
+      {error && (
+        <div style={{
+          background: 'rgba(255, 59, 48, 0.15)',
+          color: '#ff6b60',
+          border: '1px solid rgba(255, 59, 48, 0.3)',
+          padding: '12px 16px',
+          borderRadius: '12px',
+          marginBottom: '20px',
+          fontSize: '14px'
+        }}>
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div style={{
+          background: 'rgba(52, 199, 89, 0.15)',
+          color: '#4cd964',
+          border: '1px solid rgba(52, 199, 89, 0.3)',
+          padding: '12px 16px',
+          borderRadius: '12px',
+          marginBottom: '20px',
+          fontSize: '14px'
+        }}>
+          {success}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div>
+            <label>Username</label>
+            <input
+              type="text"
+              name="username"
+              required
+              value={formData.username}
+              onChange={handleChange}
+              placeholder="e.g. sasi123"
+            />
+          </div>
+          <div>
+            <label>Password</label>
+            <input
+              type="password"
+              name="password"
+              required
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="••••••••"
+            />
+          </div>
         </div>
 
-        {error && <div className="alert alert-error">{error}</div>}
-        {success && <div className="alert alert-success">{success}</div>}
-
-        <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Username</label>
-              <input
-                type="text"
-                className="form-input"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Choose username"
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Password</label>
-              <input
-                type="password"
-                className="form-input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Set password"
-                required
-              />
-            </div>
-          </div>
-
-          {role === 'student' ? (
-            <>
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Full Name</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="John Doe"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Email Address</label>
-                  <input
-                    type="email"
-                    className="form-input"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="john@example.com"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Branch / Specialization</label>
-                  <select
-                    className="form-input"
-                    value={branch}
-                    onChange={(e) => setBranch(e.target.value)}
-                  >
-                    <option value="Computer Science">Computer Science</option>
-                    <option value="Information Technology">Information Technology</option>
-                    <option value="Electrical Engineering">Electrical Engineering</option>
-                    <option value="Mechanical Engineering">Mechanical Engineering</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">CGPA (0.0 - 10.0)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="10"
-                    className="form-input"
-                    value={cgpa}
-                    onChange={(e) => setCgpa(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Resume URL (Optional)</label>
+        {role === 'student' ? (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label>Full Name</label>
                 <input
-                  type="url"
-                  className="form-input"
-                  value={resumeUrl}
-                  onChange={(e) => setResumeUrl(e.target.value)}
-                  placeholder="https://drive.google.com/your-resume.pdf"
+                  type="text"
+                  name="name"
+                  required
+                  value={formData.name}
+                  onChange={handleChange}
+                  placeholder="Shashank"
                 />
               </div>
-            </>
-          ) : (
-            <div className="form-group">
-              <label className="form-label">Company Name</label>
-              <input
-                type="text"
-                className="form-input"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                placeholder="TechCorp Solutions"
-                required
-              />
+              <div>
+                <label>Email Address</label>
+                <input
+                  type="email"
+                  name="email"
+                  required
+                  value={formData.email}
+                  onChange={handleChange}
+                  placeholder="name@email.com"
+                />
+              </div>
             </div>
-          )}
 
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? 'Creating Account...' : `Register as ${role === 'student' ? 'Student' : 'Recruiter'}`}
-          </button>
-        </form>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label>Branch</label>
+                <select name="branch" value={formData.branch} onChange={handleChange}>
+                  <option value="Computer Science">Computer Science</option>
+                  <option value="Information Technology">Information Technology</option>
+                  <option value="Electronics & Comm.">Electronics & Comm.</option>
+                  <option value="Mechanical">Mechanical</option>
+                  <option value="Civil">Civil</option>
+                </select>
+              </div>
+              <div>
+                <label>CGPA</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="10"
+                  name="cgpa"
+                  required
+                  value={formData.cgpa}
+                  onChange={handleChange}
+                  placeholder="8.50"
+                />
+              </div>
+            </div>
+          </>
+        ) : (
+          <div>
+            <label>Company Name</label>
+            <input
+              type="text"
+              name="company_name"
+              required
+              value={formData.company_name}
+              onChange={handleChange}
+              placeholder="Google, Microsoft, TCS..."
+            />
+          </div>
+        )}
 
-        <p className="auth-footer">
-          Already registered? <Link to="/login" className="auth-link">Sign in here</Link>
-        </p>
-      </div>
+        <button type="submit" disabled={loading} style={{ width: '100%', marginTop: '12px' }}>
+          {loading ? 'Registering...' : `Register as ${role === 'student' ? 'Student' : 'Recruiter'}`}
+        </button>
+      </form>
+
+      <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '14px', color: 'var(--ios-text-secondary)' }}>
+        Already registered? <Link to="/login" style={{ color: 'var(--ios-system-blue)', textDecoration: 'none', fontWeight: 600 }}>Sign in here</Link>
+      </p>
     </div>
   );
-}
+};
 
 export default Register;

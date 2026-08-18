@@ -1,270 +1,103 @@
 const express = require('express');
 const router = express.Router();
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const pool = require('../config/db');
-const { hashPassword, comparePassword } = require('../utils/password');
-const { verifyToken } = require('../middleware/auth');
+const db = require('../config/db');
 
-/**
- * @route   POST /api/auth/register
- * @desc    Register a new student or recruiter user
- * @access  Public
- */
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecretjwtkey12345';
+
+// POST /api/auth/register
 router.post('/register', async (req, res) => {
   const { username, password, role, name, email, branch, cgpa, resume_url, company_name } = req.body;
 
-  // 1. Basic Validation
   if (!username || !password || !role) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Username, password, and role are required.'
-    });
+    return res.status(400).json({ message: 'Username, password, and role are required.' });
   }
 
-  if (!['student', 'recruiter'].includes(role)) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Role must be either "student" or "recruiter".'
-    });
-  }
-
-  if (role === 'student' && (!name || !email || !branch)) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Student name, email, and branch are required.'
-    });
-  }
-
-  if (role === 'recruiter' && !company_name) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Company name is required for recruiter registration.'
-    });
-  }
-
-  let connection;
   try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-
-    // 2. Check if username already exists
-    const [existingUsers] = await connection.query(
-      'SELECT id FROM users WHERE username = ?',
-      [username]
-    );
-
-    if (existingUsers.length > 0) {
-      await connection.rollback();
-      return res.status(400).json({
-        status: 'error',
-        message: 'Username is already taken.'
-      });
+    const [existing] = await db.query('SELECT id FROM users WHERE username = ?', [username]);
+    if (existing.length > 0) {
+      return res.status(400).json({ message: 'Username already exists.' });
     }
 
-    // If student, check if email exists
-    if (role === 'student') {
-      const [existingEmails] = await connection.query(
-        'SELECT id FROM students WHERE email = ?',
-        [email]
-      );
-      if (existingEmails.length > 0) {
-        await connection.rollback();
-        return res.status(400).json({
-          status: 'error',
-          message: 'Email address is already registered.'
-        });
-      }
-    }
-
-    // 3. Hash password
-    const hashedPassword = await hashPassword(password);
-
-    // 4. Insert into users table
-    const [userResult] = await connection.query(
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const [userResult] = await db.query(
       'INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
       [username, hashedPassword, role]
     );
 
     const userId = userResult.insertId;
 
-    // 5. Insert into corresponding profile table
     if (role === 'student') {
-      await connection.query(
-        'INSERT INTO students (user_id, name, email, cgpa, branch, resume_url) VALUES (?, ?, ?, ?, ?, ?)',
-        [userId, name, email, cgpa || 0.00, branch, resume_url || null]
+      await db.query(
+        'INSERT INTO students (user_id, name, email, branch, cgpa, resume_url) VALUES (?, ?, ?, ?, ?, ?)',
+        [userId, name || username, email || '', branch || 'General', cgpa || 0, resume_url || '']
       );
     } else if (role === 'recruiter') {
-      await connection.query(
-        'INSERT INTO recruiters (user_id, company_name) VALUES (?, ?)',
-        [userId, company_name]
+      await db.query(
+        'INSERT INTO recruiters (user_id, company_name, email) VALUES (?, ?, ?)',
+        [userId, company_name || 'Organization', email || '']
       );
     }
 
-    // 6. Commit transaction
-    await connection.commit();
-
-    return res.status(201).json({
-      status: 'success',
-      message: 'User registered successfully.',
-      userId,
-      role
-    });
+    res.status(201).json({ status: 'success', message: 'User registered successfully! Please sign in.' });
   } catch (error) {
-    if (connection) await connection.rollback();
-    console.error('Registration Error:', error);
-    return res.status(500).json({
-      status: 'error',
-      message: 'Server error during registration.',
-      error: error.message
-    });
-  } finally {
-    if (connection) connection.release();
+    console.error('Registration error:', error);
+    res.status(500).json({ message: 'Database error during registration.' });
   }
 });
 
-/**
- * @route   POST /api/auth/login
- * @desc    Authenticate user & get JWT token
- * @access  Public
- */
+// POST /api/auth/login
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
-  if (!username || !password) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Please provide both username and password.'
-    });
-  }
-
   try {
-    // 1. Fetch user from database
-    const [users] = await pool.query(
-      'SELECT * FROM users WHERE username = ?',
-      [username]
-    );
-
+    const [users] = await db.query('SELECT * FROM users WHERE username = ?', [username]);
     if (users.length === 0) {
-      return res.status(401).json({
-        status: 'error',
-        message: 'Invalid username or password.'
-      });
+      return res.status(401).json({ message: 'Invalid username or password.' });
     }
 
     const user = users[0];
-
-    // 2. Verify password
-    const isMatch = await comparePassword(password, user.password);
+    const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({
-        status: 'error',
-        message: 'Invalid username or password.'
-      });
+      return res.status(401).json({ message: 'Invalid username or password.' });
     }
 
-    // 3. Fetch linked profile data
-    let profile = null;
+    let extraData = {};
     if (user.role === 'student') {
-      const [students] = await pool.query(
-        'SELECT * FROM students WHERE user_id = ?',
-        [user.id]
-      );
-      if (students.length > 0) profile = students[0];
+      const [studentRows] = await db.query('SELECT * FROM students WHERE user_id = ?', [user.id]);
+      if (studentRows.length > 0) {
+        extraData = studentRows[0];
+      }
     } else if (user.role === 'recruiter') {
-      const [recruiters] = await pool.query(
-        'SELECT * FROM recruiters WHERE user_id = ?',
-        [user.id]
-      );
-      if (recruiters.length > 0) profile = recruiters[0];
+      const [recruiterRows] = await db.query('SELECT * FROM recruiters WHERE user_id = ?', [user.id]);
+      if (recruiterRows.length > 0) {
+        extraData = recruiterRows[0];
+      }
     }
 
-    // 4. Generate JWT Token
-    const payload = {
+    const tokenPayload = {
       id: user.id,
       username: user.username,
-      role: user.role
+      role: user.role,
+      ...extraData
     };
 
-    const token = jwt.sign(
-      payload,
-      process.env.JWT_SECRET || 'super_secret_jwt_key_123',
-      { expiresIn: '24h' }
-    );
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
 
-    return res.json({
+    res.status(200).json({
       status: 'success',
-      message: 'Login successful.',
       token,
       user: {
         id: user.id,
         username: user.username,
         role: user.role,
-        profile
+        ...extraData
       }
     });
   } catch (error) {
-    console.error('Login Error:', error);
-    return res.status(500).json({
-      status: 'error',
-      message: 'Server error during login.',
-      error: error.message
-    });
-  }
-});
-
-/**
- * @route   GET /api/auth/me
- * @desc    Get currently logged in user profile
- * @access  Private (Protected by verifyToken)
- */
-router.get('/me', verifyToken, async (req, res) => {
-  try {
-    const [users] = await pool.query(
-      'SELECT id, username, role, created_at FROM users WHERE id = ?',
-      [req.user.id]
-    );
-
-    if (users.length === 0) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'User profile not found.'
-      });
-    }
-
-    const user = users[0];
-
-    // Fetch linked profile
-    let profile = null;
-    if (user.role === 'student') {
-      const [students] = await pool.query(
-        'SELECT * FROM students WHERE user_id = ?',
-        [user.id]
-      );
-      if (students.length > 0) profile = students[0];
-    } else if (user.role === 'recruiter') {
-      const [recruiters] = await pool.query(
-        'SELECT * FROM recruiters WHERE user_id = ?',
-        [user.id]
-      );
-      if (recruiters.length > 0) profile = recruiters[0];
-    }
-
-    return res.json({
-      status: 'success',
-      user: {
-        id: user.id,
-        username: user.username,
-        role: user.role,
-        created_at: user.created_at,
-        profile
-      }
-    });
-  } catch (error) {
-    console.error('Fetch Me Profile Error:', error);
-    return res.status(500).json({
-      status: 'error',
-      message: 'Server error fetching user profile.'
-    });
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Database error during login.' });
   }
 });
 

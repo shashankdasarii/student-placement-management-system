@@ -1,196 +1,73 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../config/db');
+const db = require('../config/db');
 const { verifyToken, authorize } = require('../middleware/auth');
 
-/**
- * @route   POST /api/jobs
- * @desc    Create a new job posting (Recruiter or Admin only)
- * @access  Private
- */
-router.post('/', verifyToken, authorize('recruiter', 'admin'), async (req, res) => {
-  const { title, description, min_cgpa, deadline } = req.body;
-
-  if (!title || !description || min_cgpa === undefined || !deadline) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Title, description, min_cgpa, and deadline are required.'
-    });
-  }
-
-  try {
-    // Fetch recruiter company_id linked to req.user.id
-    const [recruiters] = await pool.query(
-      'SELECT id FROM recruiters WHERE user_id = ?',
-      [req.user.id]
-    );
-
-    if (recruiters.length === 0 && req.user.role !== 'admin') {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Recruiter profile not found.'
-      });
-    }
-
-    const companyId = recruiters.length > 0 ? recruiters[0].id : 1;
-
-    // Format deadline if passed as ISO string or YYYY-MM-DD
-    const formattedDeadline = new Date(deadline).toISOString().slice(0, 19).replace('T', ' ');
-
-    const [result] = await pool.query(
-      'INSERT INTO jobs (company_id, title, description, min_cgpa, deadline) VALUES (?, ?, ?, ?, ?)',
-      [companyId, title, description, parseFloat(min_cgpa) || 0.00, formattedDeadline]
-    );
-
-    return res.status(201).json({
-      status: 'success',
-      message: 'Job posted successfully.',
-      jobId: result.insertId
-    });
-  } catch (error) {
-    console.error('Create Job Error:', error);
-    return res.status(500).json({
-      status: 'error',
-      message: 'Server error while creating job posting.',
-      error: error.message
-    });
-  }
-});
-
-/**
- * @route   GET /api/jobs
- * @desc    Get all job postings with recruiter company name
- * @access  Private
- */
-router.get('/', verifyToken, async (req, res) => {
-  try {
-    const [jobs] = await pool.query(`
-      SELECT j.id, j.company_id, j.title, j.description, j.min_cgpa, j.deadline, j.created_at, r.company_name
-      FROM jobs j
-      JOIN recruiters r ON j.company_id = r.id
-      ORDER BY j.created_at DESC
-    `);
-
-    return res.json({
-      status: 'success',
-      count: jobs.length,
-      jobs
-    });
-  } catch (error) {
-    console.error('Fetch Jobs Error:', error);
-    return res.status(500).json({
-      status: 'error',
-      message: 'Server error fetching job postings.'
-    });
-  }
-});
-
-/**
- * @route   GET /api/jobs/eligible
- * @desc    Get jobs where logged-in student meets CGPA requirement & deadline has not passed
- * @access  Private (Student only)
- */
+// GET /api/jobs/eligible - Student fetches jobs where their CGPA >= min_cgpa
 router.get('/eligible', verifyToken, authorize('student'), async (req, res) => {
   try {
-    // 1. Fetch student's profile to get CGPA and student.id
-    const [students] = await pool.query(
-      'SELECT id, cgpa, branch FROM students WHERE user_id = ?',
+    // 1. Get student CGPA using user_id
+    const [studentRows] = await db.query(
+      'SELECT cgpa FROM students WHERE user_id = ?',
       [req.user.id]
     );
 
-    if (students.length === 0) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Student profile not found.'
-      });
-    }
+    const studentCgpa = studentRows.length > 0 ? parseFloat(studentRows[0].cgpa) : 0;
 
-    const student = students[0];
-    const studentCgpa = parseFloat(student.cgpa);
+    // 2. Fetch jobs matching CGPA criteria and active deadline
+    const [jobs] = await db.query(
+      `SELECT j.id, j.title, j.description, j.min_cgpa, j.deadline, r.company_name
+       FROM jobs j
+       JOIN recruiters r ON j.recruiter_id = r.user_id
+       WHERE j.min_cgpa <= ?
+       ORDER BY j.created_at DESC`,
+      [studentCgpa]
+    );
 
-    // 2. Query jobs where min_cgpa <= studentCgpa and deadline >= NOW()
-    // Also include a subquery `has_applied` checking if student applied
-    const [jobs] = await pool.query(`
-      SELECT 
-        j.id, 
-        j.company_id, 
-        j.title, 
-        j.description, 
-        j.min_cgpa, 
-        j.deadline, 
-        j.created_at, 
-        r.company_name,
-        (SELECT COUNT(*) FROM applications a WHERE a.job_id = j.id AND a.student_id = ?) > 0 AS has_applied
-      FROM jobs j
-      JOIN recruiters r ON j.company_id = r.id
-      WHERE j.min_cgpa <= ? AND j.deadline >= NOW()
-      ORDER BY j.created_at DESC
-    `, [student.id, studentCgpa]);
-
-    return res.json({
-      status: 'success',
-      studentCgpa,
-      count: jobs.length,
-      jobs
-    });
+    res.status(200).json({ status: 'success', data: jobs });
   } catch (error) {
-    console.error('Fetch Eligible Jobs Error:', error);
-    return res.status(500).json({
-      status: 'error',
-      message: 'Server error fetching eligible jobs.'
-    });
+    console.error('Fetch eligible jobs error:', error);
+    res.status(500).json({ message: 'Database error fetching eligible jobs.' });
   }
 });
 
-/**
- * @route   GET /api/jobs/my-jobs
- * @desc    Get jobs posted by the logged-in recruiter
- * @access  Private (Recruiter only)
- */
-router.get('/my-jobs', verifyToken, authorize('recruiter'), async (req, res) => {
+// GET /api/jobs/recruiter - Recruiter fetches their posted jobs
+router.get('/recruiter', verifyToken, authorize('recruiter'), async (req, res) => {
   try {
-    const [recruiters] = await pool.query(
-      'SELECT id, company_name FROM recruiters WHERE user_id = ?',
+    const [jobs] = await db.query(
+      'SELECT * FROM jobs WHERE recruiter_id = ? ORDER BY created_at DESC',
       [req.user.id]
     );
+    res.status(200).json({ status: 'success', data: jobs });
+  } catch (error) {
+    console.error('Fetch recruiter jobs error:', error);
+    res.status(500).json({ message: 'Database error fetching recruiter jobs.' });
+  }
+});
 
-    if (recruiters.length === 0) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Recruiter profile not found.'
-      });
-    }
+// POST /api/jobs - Recruiter creates a new job drive
+router.post('/', verifyToken, authorize('recruiter'), async (req, res) => {
+  const { title, description, min_cgpa, deadline } = req.body;
+  const recruiter_id = req.user.id;
 
-    const recruiter = recruiters[0];
+  if (!title || !description || min_cgpa === undefined || !deadline) {
+    return res.status(400).json({ message: 'All job fields are required.' });
+  }
 
-    const [jobs] = await pool.query(`
-      SELECT 
-        j.id, 
-        j.title, 
-        j.description, 
-        j.min_cgpa, 
-        j.deadline, 
-        j.created_at, 
-        r.company_name,
-        (SELECT COUNT(*) FROM applications a WHERE a.job_id = j.id) AS applicant_count
-      FROM jobs j
-      JOIN recruiters r ON j.company_id = r.id
-      WHERE j.company_id = ?
-      ORDER BY j.created_at DESC
-    `, [recruiter.id]);
+  try {
+    const [result] = await db.query(
+      'INSERT INTO jobs (recruiter_id, title, description, min_cgpa, deadline) VALUES (?, ?, ?, ?, ?)',
+      [recruiter_id, title, description, parseFloat(min_cgpa), deadline]
+    );
 
-    return res.json({
+    res.status(201).json({
       status: 'success',
-      company_name: recruiter.company_name,
-      count: jobs.length,
-      jobs
+      message: 'Job posting created successfully!',
+      job_id: result.insertId
     });
   } catch (error) {
-    console.error('Fetch Recruiter Jobs Error:', error);
-    return res.status(500).json({
-      status: 'error',
-      message: 'Server error fetching posted jobs.'
-    });
+    console.error('Create job error:', error);
+    res.status(500).json({ message: 'Database error creating job drive.' });
   }
 });
 

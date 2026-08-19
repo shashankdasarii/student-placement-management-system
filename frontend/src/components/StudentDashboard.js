@@ -17,6 +17,15 @@ const StudentDashboard = () => {
   const [uploadMsg, setUploadMsg] = useState('');
   const [loading, setLoading] = useState(true);
 
+  // Helper to ensure state always receives an array
+  const ensureArray = (data) => {
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.data)) return data.data;
+    if (Array.isArray(data?.jobs)) return data.jobs;
+    if (Array.isArray(data?.applications)) return data.applications;
+    return [];
+  };
+
   const fetchDashboardData = useCallback(async () => {
     if (!token) {
       navigate('/login');
@@ -28,15 +37,17 @@ const StudentDashboard = () => {
       const jobsRes = await axios.get(`${API_BASE_URL}/api/jobs/eligible`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setEligibleJobs(jobsRes.data?.data || jobsRes.data || []);
+      setEligibleJobs(ensureArray(jobsRes.data));
 
       // 2. Fetch my applications
       const appsRes = await axios.get(`${API_BASE_URL}/api/applications/my`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setMyApplications(appsRes.data?.data || appsRes.data || []);
+      setMyApplications(ensureArray(appsRes.data));
     } catch (err) {
       console.error('Error fetching dashboard jobs/apps:', err);
+      setEligibleJobs([]);
+      setMyApplications([]);
     } finally {
       setLoading(false);
     }
@@ -104,7 +115,10 @@ const StudentDashboard = () => {
     }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', marginTop: '50px' }}>Loading Portal...</div>;
+  if (loading) return <div style={{ textAlign: 'center', marginTop: '50px', color: '#fff' }}>Loading Portal...</div>;
+
+  const safeJobs = Array.isArray(eligibleJobs) ? eligibleJobs : [];
+  const safeApps = Array.isArray(myApplications) ? myApplications : [];
 
   return (
     <div style={{ maxWidth: '900px', margin: '30px auto', padding: '0 16px' }}>
@@ -175,26 +189,26 @@ const StudentDashboard = () => {
           className={`tab-btn ${activeTab === 'jobs' ? 'active' : ''}`}
           onClick={() => handleTabChange('jobs')}
         >
-          📋 Eligible Jobs ({eligibleJobs.length})
+          📋 Eligible Jobs ({safeJobs.length})
         </button>
         <button
           className={`tab-btn ${activeTab === 'applications' ? 'active' : ''}`}
           onClick={() => handleTabChange('applications')}
         >
-          📥 My Applications ({myApplications.length})
+          📥 My Applications ({safeApps.length})
         </button>
       </div>
 
       {/* Eligible Jobs */}
       {activeTab === 'jobs' && (
         <div>
-          {eligibleJobs.length === 0 ? (
+          {safeJobs.length === 0 ? (
             <p style={{ textAlign: 'center', color: 'var(--ios-text-secondary)', padding: '40px 0' }}>
               No eligible job postings available at this time for your CGPA criteria.
             </p>
           ) : (
-            eligibleJobs.map((job) => {
-              const applied = myApplications.some((a) => a.title === job.title);
+            safeJobs.map((job) => {
+              const applied = safeApps.some((a) => a.title === job.title);
               return (
                 <div key={job.id} className="card" style={{ marginBottom: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -231,12 +245,12 @@ const StudentDashboard = () => {
       {/* My Applications */}
       {activeTab === 'applications' && (
         <div>
-          {myApplications.length === 0 ? (
+          {safeApps.length === 0 ? (
             <p style={{ textAlign: 'center', color: 'var(--ios-text-secondary)', padding: '40px 0' }}>
               You haven't submitted any applications yet.
             </p>
           ) : (
-            myApplications.map((app) => (
+            safeApps.map((app) => (
               <div key={app.id} className="card" style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>

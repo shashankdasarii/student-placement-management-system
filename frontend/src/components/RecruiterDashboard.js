@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import '../App.css';
+import API_BASE_URL from '../config';
 
-import API_BASE_URL from '../config'; 
 const RecruiterDashboard = () => {
   const [jobs, setJobs] = useState([]);
   const [selectedJob, setSelectedJob] = useState(null);
@@ -20,31 +20,39 @@ const RecruiterDashboard = () => {
   const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     if (!token) {
       navigate('/login');
       return;
     }
     try {
+      setLoading(true);
       const res = await axios.get(`${API_BASE_URL}/api/jobs/recruiter`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setJobs(res.data?.data || []);
+      
+      // Safely handle arrays whether direct or nested
+      const jobList = Array.isArray(res.data)
+        ? res.data
+        : (Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data?.jobs) ? res.data.jobs : []));
+      
+      setJobs(jobList);
     } catch (err) {
       console.error('Error fetching recruiter jobs:', err);
+      setJobs([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [token, navigate]);
 
   useEffect(() => {
     fetchJobs();
-  }, []);
+  }, [fetchJobs]);
 
   const handlePostJob = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('http://127.0.0.1:5001/api/jobs', {
+      await axios.post(`${API_BASE_URL}/api/jobs`, {
         ...formData,
         min_cgpa: parseFloat(formData.min_cgpa)
       }, {
@@ -61,19 +69,25 @@ const RecruiterDashboard = () => {
   const handleViewApplicants = async (job) => {
     setSelectedJob(job);
     try {
-      const res = await axios.get(`http://127.0.0.1:5001/api/applications/job/${job.id}`, {
+      const res = await axios.get(`${API_BASE_URL}/api/applications/job/${job.id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setApplicants(res.data?.data || []);
+      
+      const applicantList = Array.isArray(res.data)
+        ? res.data
+        : (Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data?.applicants) ? res.data.applicants : []));
+      
+      setApplicants(applicantList);
     } catch (err) {
       console.error('Error fetching applicants:', err);
+      setApplicants([]);
     }
   };
 
   const handleUpdateStatus = async (applicationId, newStatus) => {
     try {
       await axios.put(
-        `http://127.0.0.1:5001/api/applications/${applicationId}/status`,
+        `${API_BASE_URL}/api/applications/${applicationId}/status`,
         { status: newStatus },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -90,7 +104,7 @@ const RecruiterDashboard = () => {
     navigate('/login');
   };
 
-  if (loading) return <div style={{ textAlign: 'center', marginTop: '50px' }}>Loading Dashboard...</div>;
+  if (loading) return <div style={{ textAlign: 'center', marginTop: '50px', color: '#fff' }}>Loading Dashboard...</div>;
 
   return (
     <div style={{ maxWidth: '960px', margin: '30px auto', padding: '0 16px' }}>

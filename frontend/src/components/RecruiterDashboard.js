@@ -17,41 +17,47 @@ const RecruiterDashboard = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const cleanBaseUrl = API_BASE_URL ? API_BASE_URL.replace(/\/+$/, '') : '';
 
+  // 1. Fetch posted jobs for this recruiter
   const fetchJobs = useCallback(async () => {
-    if (!token) {
+    const currentToken = localStorage.getItem('token');
+    if (!currentToken) {
       navigate('/login');
       return;
     }
+
     try {
       setLoading(true);
-      const res = await axios.get(`${API_BASE_URL}/api/jobs/recruiter`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const res = await axios.get(`${cleanBaseUrl}/api/jobs/recruiter`, {
+        headers: { Authorization: `Bearer ${currentToken}` }
       });
 
+      // Handle both standard backend format { status: 'success', data: [...] } and direct array
       const jobList = Array.isArray(res.data?.data)
         ? res.data.data
-        : (Array.isArray(res.data) ? res.data : []);
+        : (Array.isArray(res.data) ? res.data : (Array.isArray(res.data?.jobs) ? res.data.jobs : []));
 
       setJobs(jobList);
     } catch (err) {
-      console.error('Error fetching recruiter jobs:', err);
+      console.error('Error fetching recruiter jobs:', err.response?.data || err.message);
       setJobs([]);
     } finally {
       setLoading(false);
     }
-  }, [token, navigate]);
+  }, [navigate, cleanBaseUrl]);
 
   useEffect(() => {
     fetchJobs();
   }, [fetchJobs]);
 
+  // 2. Post a new job
   const handlePostJob = async (e) => {
     e.preventDefault();
 
-    if (!token) {
+    const currentToken = localStorage.getItem('token');
+    if (!currentToken) {
       alert('Your session expired. Please sign in again.');
       navigate('/login');
       return;
@@ -59,31 +65,36 @@ const RecruiterDashboard = () => {
 
     try {
       const payload = {
-        title: formData.title,
-        description: formData.description,
+        title: formData.title.trim(),
+        description: formData.description.trim(),
         min_cgpa: parseFloat(formData.min_cgpa),
         deadline: formData.deadline
       };
 
-      const res = await axios.post(`${API_BASE_URL}/api/jobs`, payload, {
-        headers: { Authorization: `Bearer ${token}` }
+      const res = await axios.post(`${cleanBaseUrl}/api/jobs`, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentToken}`
+        }
       });
 
       alert(res.data?.message || 'Job posted successfully!');
       setFormData({ title: '', description: '', min_cgpa: '7.50', deadline: '' });
-      fetchJobs();
+      await fetchJobs(); // Refresh active job list immediately
     } catch (err) {
-      console.error('Error posting job:', err);
+      console.error('Error posting job:', err.response?.data || err.message);
       const backendMessage = err.response?.data?.message || err.message;
       alert(`Error posting job: ${backendMessage}`);
     }
   };
 
+  // 3. View applicants for a specific job
   const handleViewApplicants = async (job) => {
+    const currentToken = localStorage.getItem('token');
     setSelectedJob(job);
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/applications/job/${job.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const res = await axios.get(`${cleanBaseUrl}/api/applications/job/${job.id}`, {
+        headers: { Authorization: `Bearer ${currentToken}` }
       });
 
       const applicantList = Array.isArray(res.data?.data)
@@ -92,17 +103,19 @@ const RecruiterDashboard = () => {
 
       setApplicants(applicantList);
     } catch (err) {
-      console.error('Error fetching applicants:', err);
+      console.error('Error fetching applicants:', err.response?.data || err.message);
       setApplicants([]);
     }
   };
 
+  // 4. Update applicant status (Shortlisted, Accepted, Rejected)
   const handleUpdateStatus = async (applicationId, newStatus) => {
+    const currentToken = localStorage.getItem('token');
     try {
       await axios.put(
-        `${API_BASE_URL}/api/applications/${applicationId}/status`,
+        `${cleanBaseUrl}/api/applications/${applicationId}/status`,
         { status: newStatus },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${currentToken}` } }
       );
       if (selectedJob) {
         handleViewApplicants(selectedJob);

@@ -12,30 +12,41 @@ router.post('/', verifyToken, authorize('recruiter'), async (req, res) => {
   }
 
   try {
-    // 1. Resolve the recruiter ID from user ID
-    let recruiterId = req.user.recruiter_id || req.user.id;
+    const userId = req.user.id;
+    let recruiterId = userId;
 
-    const [recruiterRows] = await db.query(
-      'SELECT id FROM recruiters WHERE user_id = ? OR id = ? LIMIT 1',
-      [req.user.id, req.user.id]
-    );
-
-    if (recruiterRows.length > 0) {
-      recruiterId = recruiterRows[0].id;
-    } else {
-      // Auto-create recruiter record if missing
-      const [insertRec] = await db.query(
-        'INSERT INTO recruiters (user_id, company_name, email) VALUES (?, ?, ?)',
-        [req.user.id, req.user.company_name || 'Organization', req.user.email || '']
-      );
-      recruiterId = insertRec.insertId;
+    // Try finding recruiter profile id if table exists
+    try {
+      const [recruiterRows] = await db.query('SELECT id FROM recruiters WHERE user_id = ? LIMIT 1', [userId]);
+      if (recruiterRows.length > 0) {
+        recruiterId = recruiterRows[0].id;
+      }
+    } catch (e) {
+      // Ignore if recruiters table is optional
     }
 
-    // 2. Insert into jobs table
-    const [result] = await db.query(
-      'INSERT INTO jobs (recruiter_id, title, description, min_cgpa, deadline) VALUES (?, ?, ?, ?, ?)',
-      [recruiterId, title, description, parseFloat(min_cgpa) || 0, deadline]
-    );
+    // Inspect columns of jobs table to match exact column name
+    const [cols] = await db.query('SHOW COLUMNS FROM jobs');
+    const colNames = cols.map(c => c.Field);
+
+    let insertQuery = '';
+    let insertValues = [];
+
+    if (colNames.includes('posted_by')) {
+      insertQuery = 'INSERT INTO jobs (title, description, min_cgpa, deadline, posted_by) VALUES (?, ?, ?, ?, ?)';
+      insertValues = [title.trim(), description.trim(), parseFloat(min_cgpa) || 0, deadline, userId];
+    } else if (colNames.includes('user_id')) {
+      insertQuery = 'INSERT INTO jobs (title, description, min_cgpa, deadline, user_id) VALUES (?, ?, ?, ?, ?)';
+      insertValues = [title.trim(), description.trim(), parseFloat(min_cgpa) || 0, deadline, userId];
+    } else if (colNames.includes('recruiter_id')) {
+      insertQuery = 'INSERT INTO jobs (title, description, min_cgpa, deadline, recruiter_id) VALUES (?, ?, ?, ?, ?)';
+      insertValues = [title.trim(), description.trim(), parseFloat(min_cgpa) || 0, deadline, recruiterId];
+    } else {
+      insertQuery = 'INSERT INTO jobs (title, description, min_cgpa, deadline) VALUES (?, ?, ?, ?)';
+      insertValues = [title.trim(), description.trim(), parseFloat(min_cgpa) || 0, deadline];
+    }
+
+    const [result] = await db.query(insertQuery, insertValues);
 
     res.status(201).json({
       status: 'success',
@@ -54,17 +65,32 @@ router.post('/', verifyToken, authorize('recruiter'), async (req, res) => {
 // GET /api/jobs/recruiter - Get jobs for logged-in recruiter
 router.get('/recruiter', verifyToken, authorize('recruiter'), async (req, res) => {
   try {
-    const [recruiterRows] = await db.query(
-      'SELECT id FROM recruiters WHERE user_id = ? OR id = ? LIMIT 1',
-      [req.user.id, req.user.id]
-    );
+    const userId = req.user.id;
 
-    const recruiterId = recruiterRows.length > 0 ? recruiterRows[0].id : req.user.id;
+    // Inspect columns of jobs table
+    const [cols] = await db.query('SHOW COLUMNS FROM jobs');
+    const colNames = cols.map(c => c.Field);
 
-    const [jobs] = await db.query(
-      'SELECT * FROM jobs WHERE recruiter_id = ? ORDER BY created_at DESC',
-      [recruiterId]
-    );
+    let selectQuery = 'SELECT * FROM jobs ORDER BY id DESC';
+    let params = [];
+
+    if (colNames.includes('posted_by')) {
+      selectQuery = 'SELECT * FROM jobs WHERE posted_by = ? ORDER BY id DESC';
+      params = [userId];
+    } else if (colNames.includes('user_id')) {
+      selectQuery = 'SELECT * FROM jobs WHERE user_id = ? ORDER BY id DESC';
+      params = [userId];
+    } else if (colNames.includes('recruiter_id')) {
+      let recruiterId = userId;
+      try {
+        const [recRows] = await db.query('SELECT id FROM recruiters WHERE user_id = ? LIMIT 1', [userId]);
+        if (recRows.length > 0) recruiterId = recRows[0].id;
+      } catch (e) {}
+      selectQuery = 'SELECT * FROM jobs WHERE recruiter_id = ? ORDER BY id DESC';
+      params = [recruiterId];
+    }
+
+    const [jobs] = await db.query(selectQuery, params);
 
     res.status(200).json({
       status: 'success',
@@ -72,6 +98,17 @@ router.get('/recruiter', verifyToken, authorize('recruiter'), async (req, res) =
     });
   } catch (error) {
     console.error('Error fetching recruiter jobs:', error);
+    res.status(500).json({ status: 'error', message: 'Error fetching jobs.' });
+  }
+});
+
+// GET /api/jobs - Public/Student listing of all jobs
+router.get('/', async (req, res) => {
+  try {
+    const [jobs] = await db.query('SELECT * FROM jobs ORDER BY id DESC');
+    res.status(200).json({ status: 'success', data: jobs });
+  } catch (error) {
+    console.error('Error fetching all jobs:', error);
     res.status(500).json({ status: 'error', message: 'Error fetching jobs.' });
   }
 });

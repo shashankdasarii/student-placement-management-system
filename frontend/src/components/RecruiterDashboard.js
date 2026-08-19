@@ -20,11 +20,16 @@ const RecruiterDashboard = () => {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const cleanBaseUrl = (API_BASE_URL || '').replace(/\/+$/, '');
 
+  const handleSignOut = useCallback(() => {
+    localStorage.clear();
+    navigate('/login');
+  }, [navigate]);
+
   // 1. Fetch posted jobs for this recruiter
   const fetchJobs = useCallback(async () => {
     const currentToken = localStorage.getItem('token');
     if (!currentToken) {
-      navigate('/login');
+      handleSignOut();
       return;
     }
 
@@ -41,11 +46,16 @@ const RecruiterDashboard = () => {
       setJobs(jobList);
     } catch (err) {
       console.error('Error fetching recruiter jobs:', err.response?.data || err.message);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        alert('Session expired. Please sign in again.');
+        handleSignOut();
+        return;
+      }
       setJobs([]);
     } finally {
       setLoading(false);
     }
-  }, [navigate, cleanBaseUrl]);
+  }, [cleanBaseUrl, handleSignOut]);
 
   useEffect(() => {
     fetchJobs();
@@ -58,7 +68,7 @@ const RecruiterDashboard = () => {
     const currentToken = localStorage.getItem('token');
     if (!currentToken) {
       alert('Your session expired. Please sign in again.');
-      navigate('/login');
+      handleSignOut();
       return;
     }
 
@@ -87,6 +97,11 @@ const RecruiterDashboard = () => {
       await fetchJobs();
     } catch (err) {
       console.error('Error posting job:', err.response?.data || err.message);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        alert('Session expired or invalid permissions. Please sign in again.');
+        handleSignOut();
+        return;
+      }
       const backendMessage = err.response?.data?.message || err.message;
       alert(`Error posting job: ${backendMessage}`);
     }
@@ -95,6 +110,11 @@ const RecruiterDashboard = () => {
   // 3. View applicants for a specific job
   const handleViewApplicants = async (job) => {
     const currentToken = localStorage.getItem('token');
+    if (!currentToken) {
+      handleSignOut();
+      return;
+    }
+
     setSelectedJob(job);
     try {
       const res = await axios.get(`${cleanBaseUrl}/api/applications/job/${job.id}`, {
@@ -108,6 +128,11 @@ const RecruiterDashboard = () => {
       setApplicants(applicantList);
     } catch (err) {
       console.error('Error fetching applicants:', err.response?.data || err.message);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        alert('Session expired. Please sign in again.');
+        handleSignOut();
+        return;
+      }
       setApplicants([]);
     }
   };
@@ -115,6 +140,11 @@ const RecruiterDashboard = () => {
   // 4. Update applicant status (Shortlisted, Accepted, Rejected)
   const handleUpdateStatus = async (applicationId, newStatus) => {
     const currentToken = localStorage.getItem('token');
+    if (!currentToken) {
+      handleSignOut();
+      return;
+    }
+
     try {
       await axios.put(
         `${cleanBaseUrl}/api/applications/${applicationId}/status`,
@@ -125,13 +155,20 @@ const RecruiterDashboard = () => {
         handleViewApplicants(selectedJob);
       }
     } catch (err) {
+      console.error('Error updating status:', err.response?.data || err.message);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        alert('Session expired. Please sign in again.');
+        handleSignOut();
+        return;
+      }
       alert(err.response?.data?.message || 'Error updating status');
     }
   };
 
-  const handleSignOut = () => {
-    localStorage.clear();
-    navigate('/login');
+  const getResumeUrl = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    return `${cleanBaseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
   };
 
   if (loading) return <div style={{ textAlign: 'center', marginTop: '50px', color: '#fff' }}>Loading Dashboard...</div>;
@@ -263,7 +300,7 @@ const RecruiterDashboard = () => {
                     Status: <strong>{app.status}</strong>
                     {app.resume_url && (
                       <a
-                        href={app.resume_url}
+                        href={getResumeUrl(app.resume_url)}
                         target="_blank"
                         rel="noreferrer"
                         style={{ marginLeft: '12px', color: 'var(--ios-system-blue)', textDecoration: 'none', fontWeight: 600 }}

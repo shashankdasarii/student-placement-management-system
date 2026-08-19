@@ -30,12 +30,12 @@ const RecruiterDashboard = () => {
       const res = await axios.get(`${API_BASE_URL}/api/jobs/recruiter`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
-      // Safely handle arrays whether direct or nested
+
+      // Safely parse jobs array from direct or nested structure
       const jobList = Array.isArray(res.data)
         ? res.data
         : (Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data?.jobs) ? res.data.jobs : []));
-      
+
       setJobs(jobList);
     } catch (err) {
       console.error('Error fetching recruiter jobs:', err);
@@ -72,11 +72,11 @@ const RecruiterDashboard = () => {
       const res = await axios.get(`${API_BASE_URL}/api/applications/job/${job.id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
+
       const applicantList = Array.isArray(res.data)
         ? res.data
         : (Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data?.applicants) ? res.data.applicants : []));
-      
+
       setApplicants(applicantList);
     } catch (err) {
       console.error('Error fetching applicants:', err);

@@ -1,3 +1,3 @@
-const API_BASE_URL = 'https://your-actual-backend-name.onrender.com'; // No trailing slash at the end
+const API_BASE_URL = 'https://student-placement-management-system-vmez.onrender.com';
 
 export default API_BASE_URL;

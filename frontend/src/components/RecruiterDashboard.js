@@ -31,10 +31,9 @@ const RecruiterDashboard = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      // Safely parse jobs array from direct or nested structure
-      const jobList = Array.isArray(res.data)
-        ? res.data
-        : (Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data?.jobs) ? res.data.jobs : []));
+      const jobList = Array.isArray(res.data?.data)
+        ? res.data.data
+        : (Array.isArray(res.data) ? res.data : []);
 
       setJobs(jobList);
     } catch (err) {
@@ -51,18 +50,32 @@ const RecruiterDashboard = () => {
 
   const handlePostJob = async (e) => {
     e.preventDefault();
+
+    if (!token) {
+      alert('Your session expired. Please sign in again.');
+      navigate('/login');
+      return;
+    }
+
     try {
-      await axios.post(`${API_BASE_URL}/api/jobs`, {
-        ...formData,
-        min_cgpa: parseFloat(formData.min_cgpa)
-      }, {
+      const payload = {
+        title: formData.title,
+        description: formData.description,
+        min_cgpa: parseFloat(formData.min_cgpa),
+        deadline: formData.deadline
+      };
+
+      const res = await axios.post(`${API_BASE_URL}/api/jobs`, payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      alert('Job posted successfully!');
+
+      alert(res.data?.message || 'Job posted successfully!');
       setFormData({ title: '', description: '', min_cgpa: '7.50', deadline: '' });
       fetchJobs();
     } catch (err) {
-      alert(err.response?.data?.message || 'Error posting job');
+      console.error('Error posting job:', err);
+      const backendMessage = err.response?.data?.message || err.message;
+      alert(`Error posting job: ${backendMessage}`);
     }
   };
 
@@ -73,9 +86,9 @@ const RecruiterDashboard = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      const applicantList = Array.isArray(res.data)
-        ? res.data
-        : (Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data?.applicants) ? res.data.applicants : []));
+      const applicantList = Array.isArray(res.data?.data)
+        ? res.data.data
+        : (Array.isArray(res.data) ? res.data : []);
 
       setApplicants(applicantList);
     } catch (err) {
@@ -112,7 +125,7 @@ const RecruiterDashboard = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
           <h2>Recruiter Dashboard</h2>
-          <p style={{ color: 'var(--ios-text-secondary)' }}>Posting for: {user?.company_name || 'Organization'}</p>
+          <p style={{ color: 'var(--ios-text-secondary)' }}>Posting for: {user?.company_name || user?.name || 'Organization'}</p>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <span className="badge badge-accent">RECRUITER</span>
@@ -218,7 +231,7 @@ const RecruiterDashboard = () => {
           ) : (
             applicants.map((app) => (
               <div
-                key={app.application_id}
+                key={app.application_id || app.id}
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
@@ -228,7 +241,7 @@ const RecruiterDashboard = () => {
                 }}
               >
                 <div>
-                  <strong>{app.name}</strong> ({app.branch}) — CGPA: <span style={{ color: 'var(--ios-system-green)', fontWeight: 700 }}>{app.cgpa}</span>
+                  <strong>{app.name || app.username}</strong> ({app.branch}) — CGPA: <span style={{ color: 'var(--ios-system-green)', fontWeight: 700 }}>{app.cgpa}</span>
                   <div style={{ fontSize: '13px', color: 'var(--ios-text-secondary)', marginTop: '4px' }}>
                     Status: <strong>{app.status}</strong>
                     {app.resume_url && (
@@ -246,19 +259,19 @@ const RecruiterDashboard = () => {
 
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
-                    onClick={() => handleUpdateStatus(app.application_id, 'Shortlisted')}
+                    onClick={() => handleUpdateStatus(app.application_id || app.id, 'Shortlisted')}
                     style={{ background: 'var(--ios-system-orange)', fontSize: '12px', padding: '6px 12px' }}
                   >
                     Shortlist
                   </button>
                   <button
-                    onClick={() => handleUpdateStatus(app.application_id, 'Accepted')}
+                    onClick={() => handleUpdateStatus(app.application_id || app.id, 'Accepted')}
                     style={{ background: 'var(--ios-system-green)', fontSize: '12px', padding: '6px 12px' }}
                   >
                     Accept
                   </button>
                   <button
-                    onClick={() => handleUpdateStatus(app.application_id, 'Rejected')}
+                    onClick={() => handleUpdateStatus(app.application_id || app.id, 'Rejected')}
                     style={{ background: 'var(--ios-system-red)', fontSize: '12px', padding: '6px 12px' }}
                   >
                     Reject

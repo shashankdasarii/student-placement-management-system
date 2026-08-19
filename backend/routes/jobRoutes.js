@@ -3,71 +3,76 @@ const router = express.Router();
 const db = require('../config/db');
 const { verifyToken, authorize } = require('../middleware/auth');
 
-// GET /api/jobs/eligible - Student fetches jobs where their CGPA >= min_cgpa
-router.get('/eligible', verifyToken, authorize('student'), async (req, res) => {
-  try {
-    // 1. Get student CGPA using user_id
-    const [studentRows] = await db.query(
-      'SELECT cgpa FROM students WHERE user_id = ?',
-      [req.user.id]
-    );
-
-    const studentCgpa = studentRows.length > 0 ? parseFloat(studentRows[0].cgpa) : 0;
-
-    // 2. Fetch jobs matching CGPA criteria and active deadline
-    const [jobs] = await db.query(
-      `SELECT j.id, j.title, j.description, j.min_cgpa, j.deadline, r.company_name
-       FROM jobs j
-       JOIN recruiters r ON j.recruiter_id = r.user_id
-       WHERE j.min_cgpa <= ?
-       ORDER BY j.created_at DESC`,
-      [studentCgpa]
-    );
-
-    res.status(200).json({ status: 'success', data: jobs });
-  } catch (error) {
-    console.error('Fetch eligible jobs error:', error);
-    res.status(500).json({ message: 'Database error fetching eligible jobs.' });
-  }
-});
-
-// GET /api/jobs/recruiter - Recruiter fetches their posted jobs
-router.get('/recruiter', verifyToken, authorize('recruiter'), async (req, res) => {
-  try {
-    const [jobs] = await db.query(
-      'SELECT * FROM jobs WHERE recruiter_id = ? ORDER BY created_at DESC',
-      [req.user.id]
-    );
-    res.status(200).json({ status: 'success', data: jobs });
-  } catch (error) {
-    console.error('Fetch recruiter jobs error:', error);
-    res.status(500).json({ message: 'Database error fetching recruiter jobs.' });
-  }
-});
-
-// POST /api/jobs - Recruiter creates a new job drive
+// POST /api/jobs - Recruiter posts a new job
 router.post('/', verifyToken, authorize('recruiter'), async (req, res) => {
   const { title, description, min_cgpa, deadline } = req.body;
-  const recruiter_id = req.user.id;
 
-  if (!title || !description || min_cgpa === undefined || !deadline) {
-    return res.status(400).json({ message: 'All job fields are required.' });
+  if (!title || !description || !deadline) {
+    return res.status(400).json({ status: 'error', message: 'Title, description, and deadline are required.' });
   }
 
   try {
+    // 1. Resolve the recruiter ID from user ID
+    let recruiterId = req.user.recruiter_id || req.user.id;
+
+    const [recruiterRows] = await db.query(
+      'SELECT id FROM recruiters WHERE user_id = ? OR id = ? LIMIT 1',
+      [req.user.id, req.user.id]
+    );
+
+    if (recruiterRows.length > 0) {
+      recruiterId = recruiterRows[0].id;
+    } else {
+      // Auto-create recruiter record if missing
+      const [insertRec] = await db.query(
+        'INSERT INTO recruiters (user_id, company_name, email) VALUES (?, ?, ?)',
+        [req.user.id, req.user.company_name || 'Organization', req.user.email || '']
+      );
+      recruiterId = insertRec.insertId;
+    }
+
+    // 2. Insert into jobs table
     const [result] = await db.query(
       'INSERT INTO jobs (recruiter_id, title, description, min_cgpa, deadline) VALUES (?, ?, ?, ?, ?)',
-      [recruiter_id, title, description, parseFloat(min_cgpa), deadline]
+      [recruiterId, title, description, parseFloat(min_cgpa) || 0, deadline]
     );
 
     res.status(201).json({
       status: 'success',
-      message: 'Job posting created successfully!',
-      job_id: result.insertId
+      message: 'Job posted successfully!',
+      jobId: result.insertId
     });
   } catch (error) {
-    console.error('Create job error:', error);
-    res.status(500).json({ message: 'Database error creating job drive.' });
+    console.error('Database error creating job:', error);
+    res.status(500).json({
+      status: 'error',
+      message: `Database error creating job drive: ${error.sqlMessage || error.message}`
+    });
+  }
+});
+
+// GET /api/jobs/recruiter - Get jobs for logged-in recruiter
+router.get('/recruiter', verifyToken, authorize('recruiter'), async (req, res) => {
+  try {
+    const [recruiterRows] = await db.query(
+      'SELECT id FROM recruiters WHERE user_id = ? OR id = ? LIMIT 1',
+      [req.user.id, req.user.id]
+    );
+
+    const recruiterId = recruiterRows.length > 0 ? recruiterRows[0].id : req.user.id;
+
+    const [jobs] = await db.query(
+      'SELECT * FROM jobs WHERE recruiter_id = ? ORDER BY created_at DESC',
+      [recruiterId]
+    );
+
+    res.status(200).json({
+      status: 'success',
+      data: jobs
+    });
+  } catch (error) {
+    console.error('Error fetching recruiter jobs:', error);
+    res.status(500).json({ status: 'error', message: 'Error fetching jobs.' });
   }
 });
 

@@ -18,7 +18,7 @@ const RecruiterDashboard = () => {
   const navigate = useNavigate();
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const cleanBaseUrl = API_BASE_URL ? API_BASE_URL.replace(/\/+$/, '') : '';
+  const cleanBaseUrl = (API_BASE_URL || '').replace(/\/+$/, '');
 
   // 1. Fetch posted jobs for this recruiter
   const fetchJobs = useCallback(async () => {
@@ -34,7 +34,6 @@ const RecruiterDashboard = () => {
         headers: { Authorization: `Bearer ${currentToken}` }
       });
 
-      // Handle both standard backend format { status: 'success', data: [...] } and direct array
       const jobList = Array.isArray(res.data?.data)
         ? res.data.data
         : (Array.isArray(res.data) ? res.data : (Array.isArray(res.data?.jobs) ? res.data.jobs : []));
@@ -63,11 +62,16 @@ const RecruiterDashboard = () => {
       return;
     }
 
+    if (!formData.title || !formData.description || !formData.deadline) {
+      alert('Please fill out all required fields.');
+      return;
+    }
+
     try {
       const payload = {
         title: formData.title.trim(),
         description: formData.description.trim(),
-        min_cgpa: parseFloat(formData.min_cgpa),
+        min_cgpa: parseFloat(formData.min_cgpa) || 0,
         deadline: formData.deadline
       };
 
@@ -80,7 +84,7 @@ const RecruiterDashboard = () => {
 
       alert(res.data?.message || 'Job posted successfully!');
       setFormData({ title: '', description: '', min_cgpa: '7.50', deadline: '' });
-      await fetchJobs(); // Refresh active job list immediately
+      await fetchJobs();
     } catch (err) {
       console.error('Error posting job:', err.response?.data || err.message);
       const backendMessage = err.response?.data?.message || err.message;

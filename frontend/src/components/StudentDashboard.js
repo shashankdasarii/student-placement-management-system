@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import '../App.css';
+import API_BASE_URL from '../config';
 
 const StudentDashboard = () => {
   const navigate = useNavigate();
@@ -24,16 +25,16 @@ const StudentDashboard = () => {
 
     try {
       // 1. Fetch eligible jobs
-      const jobsRes = await axios.get('http://127.0.0.1:5001/api/jobs/eligible', {
+      const jobsRes = await axios.get(`${API_BASE_URL}/api/jobs/eligible`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setEligibleJobs(jobsRes.data?.data || []);
+      setEligibleJobs(jobsRes.data?.data || jobsRes.data || []);
 
       // 2. Fetch my applications
-      const appsRes = await axios.get('http://127.0.0.1:5001/api/applications/my', {
+      const appsRes = await axios.get(`${API_BASE_URL}/api/applications/my`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setMyApplications(appsRes.data?.data || []);
+      setMyApplications(appsRes.data?.data || appsRes.data || []);
     } catch (err) {
       console.error('Error fetching dashboard jobs/apps:', err);
     } finally {
@@ -55,7 +56,7 @@ const StudentDashboard = () => {
   const handleApply = async (jobId) => {
     try {
       await axios.post(
-        'http://127.0.0.1:5001/api/applications/apply',
+        `${API_BASE_URL}/api/applications/apply`,
         { job_id: jobId },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -74,7 +75,7 @@ const StudentDashboard = () => {
     formData.append('resume', resumeFile);
 
     try {
-      const res = await axios.post('http://127.0.0.1:5001/api/students/upload-resume', formData, {
+      const res = await axios.post(`${API_BASE_URL}/api/students/upload-resume`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'multipart/form-data'

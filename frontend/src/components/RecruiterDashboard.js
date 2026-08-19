@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import '../App.css';
 
+import API_BASE_URL from '../config'; 
 const RecruiterDashboard = () => {
   const [jobs, setJobs] = useState([]);
   const [selectedJob, setSelectedJob] = useState(null);
@@ -25,7 +26,7 @@ const RecruiterDashboard = () => {
       return;
     }
     try {
-      const res = await axios.get('http://127.0.0.1:5001/api/jobs/recruiter', {
+      const res = await axios.get(`${API_BASE_URL}/api/jobs/recruiter`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setJobs(res.data?.data || []);

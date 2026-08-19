@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 import '../App.css';
+import API_BASE_URL from '../config';
 
 const Login = () => {
   const [formData, setFormData] = useState({ username: '', password: '' });
@@ -19,25 +20,32 @@ const Login = () => {
     setLoading(true);
 
     try {
-      const res = await axios.post('http://127.0.0.1:5001/api/auth/login', formData);
+      const cleanBase = (API_BASE_URL || '').replace(/\/+$/, '');
+      const res = await axios.post(`${cleanBase}/api/auth/login`, formData);
       const { token, user } = res.data;
+
+      if (!token) {
+        throw new Error('Token not received from server.');
+      }
 
       // Clear any prior session and store fresh authentication
       localStorage.clear();
       localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
+      localStorage.setItem('user', JSON.stringify(user || {}));
 
       // Direct redirection strictly based on role
-      if (user.role === 'student') {
+      if (user?.role === 'student') {
         navigate('/student-dashboard', { replace: true });
-      } else if (user.role === 'recruiter') {
+      } else if (user?.role === 'recruiter') {
         navigate('/recruiter-dashboard', { replace: true });
+      } else if (user?.role === 'admin') {
+        navigate('/admin-dashboard', { replace: true });
       } else {
         navigate('/login');
       }
     } catch (err) {
       console.error('Login error:', err);
-      setError(err.response?.data?.message || 'Invalid username or password.');
+      setError(err.response?.data?.message || err.message || 'Invalid username or password.');
     } finally {
       setLoading(false);
     }

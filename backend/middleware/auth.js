@@ -1,8 +1,5 @@
 const jwt = require('jsonwebtoken');
 
-/**
- * Middleware to verify JWT authentication token
- */
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -16,8 +13,9 @@ const verifyToken = (req, res, next) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_jwt_key_123');
-    req.user = decoded; // { id, username, role, iat, exp }
+    const JWT_SECRET = process.env.JWT_SECRET || 'supersecretjwtkey12345';
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
     next();
   } catch (error) {
     return res.status(401).json({
@@ -27,10 +25,6 @@ const verifyToken = (req, res, next) => {
   }
 };
 
-/**
- * Middleware to restrict access by user role
- * @param  {...string} roles - Allowed roles ('student', 'recruiter', 'admin')
- */
 const authorize = (...roles) => {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
